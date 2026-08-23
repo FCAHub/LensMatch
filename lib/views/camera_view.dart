@@ -4,9 +4,9 @@ import 'package:phosphoricons_flutter/phosphoricons_flutter.dart';
 import 'package:camera/camera.dart';
 import 'package:google_mlkit_face_mesh_detection/google_mlkit_face_mesh_detection.dart';
 import 'dart:io';
-import '../main.dart'; // Access global 'cameras' list
-import 'result_view.dart'; // To navigate after capture
-import '../utils/face_shape_detector.dart';
+import '../main.dart';
+
+import '../utils/tflite_face_detector.dart';
 
 class CameraView extends StatefulWidget {
   const CameraView({super.key});
@@ -24,13 +24,16 @@ class _CameraViewState extends State<CameraView> {
   );
 
   bool _isProcessing = false;
-  String _instructionText = 'Align face within oval';
+  String _instructionText = 'Position face in frame';
   bool _isAligned = false;
   FaceMesh? _latestFace;
+  Size? _imageSize;
+  final TFLiteFaceDetector _tfliteDetector = TFLiteFaceDetector();
 
   @override
   void initState() {
     super.initState();
+    _tfliteDetector.loadModel();
     _initializeCamera();
   }
 
@@ -104,13 +107,23 @@ class _CameraViewState extends State<CameraView> {
 
   void _evaluateFaces(List<FaceMesh> faces, Size imageSize) {
     if (faces.isEmpty) {
-      _setInstruction('Align face within oval', false);
-      _latestFace = null;
+      if (mounted) {
+        setState(() {
+          _latestFace = null;
+        });
+      }
+      _setInstruction('Position face in frame', false);
       return;
     }
 
     final face = faces.first;
-    _latestFace = face;
+    if (mounted) {
+      setState(() {
+        _latestFace = face;
+        _imageSize = imageSize;
+      });
+    }
+
     if (face.points.length < 468) {
       _setInstruction('Detecting...', false);
       return;
@@ -175,28 +188,42 @@ class _CameraViewState extends State<CameraView> {
 
   Future<void> _captureAndNavigate() async {
     if (_controller == null || !_controller!.value.isInitialized) return;
+    if (_isProcessing) return;
+    
     try {
-      FaceShapeResult? shapeResult;
-      if (_latestFace != null) {
-        shapeResult = FaceShapeDetector.detectShape(_latestFace!);
-      }
-
+      setState(() {
+        _isProcessing = true;
+        _instructionText = "Analyzing face shape...";
+      });
+      
       await _controller!.stopImageStream();
       final XFile file = await _controller!.takePicture();
       
+      FaceShapeResult? shapeResult;
+      if (_latestFace != null) {
+        shapeResult = await _tfliteDetector.processImage(file.path, _latestFace!);
+      }
+      
       if (!mounted) return;
-      Navigator.pop(context, {
+      Navigator.pop(context, <String, dynamic>{
         'imagePath': file.path,
         'shapeResult': shapeResult,
       });
     } catch (e) {
       debugPrint("Capture error: $e");
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _instructionText = "Capture failed. Try again.";
+        });
+      }
     }
   }
 
   @override
   void dispose() {
     _faceDetector.close();
+    _tfliteDetector.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -226,11 +253,11 @@ class _CameraViewState extends State<CameraView> {
               child: const Center(child: CircularProgressIndicator(color: Colors.white)),
             ),
 
-          // Face scanner overlay mask
-          if (_isCameraInitialized)
+          // Face Mesh Overlay
+          if (_isCameraInitialized && _imageSize != null)
             Positioned.fill(
               child: CustomPaint(
-                painter: _ScannerOverlayPainter(),
+                painter: FaceMeshPainter(_latestFace, _imageSize!, _isAligned),
               ),
             ),
 
@@ -244,49 +271,33 @@ class _CameraViewState extends State<CameraView> {
             ),
           ),
 
-          // Face scanner oval guide outline & instructions
-          Center(
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              width: 250,
-              height: 360,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: _isAligned ? Colors.greenAccent : Colors.white70,
-                  width: _isAligned ? 4 : 2,
-                ),
-                borderRadius: const BorderRadius.all(Radius.elliptical(250, 360)),
-              ),
-              child: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      PhosphorIcons.faceMask,
-                      color: _isAligned ? Colors.transparent : Colors.white54,
-                      size: 48,
+          // Dynamic instruction pill
+          Positioned(
+            top: 100,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                child: Container(
+                  key: ValueKey<String>(_instructionText),
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: Colors.black87,
+                    borderRadius: BorderRadius.circular(30),
+                    border: Border.all(
+                      color: _isAligned ? Colors.greenAccent : Colors.white38,
+                      width: 2,
                     ),
-                    const SizedBox(height: 16),
-                    AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: Container(
-                        key: ValueKey<String>(_instructionText),
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.black54,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          _instructionText,
-                          textAlign: TextAlign.center,
-                          style: textTheme.bodyMedium?.copyWith(
-                            color: _isAligned ? Colors.greenAccent : Colors.white,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
+                  ),
+                  child: Text(
+                    _instructionText,
+                    textAlign: TextAlign.center,
+                    style: textTheme.titleMedium?.copyWith(
+                      color: _isAligned ? Colors.greenAccent : Colors.white,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -298,19 +309,25 @@ class _CameraViewState extends State<CameraView> {
             left: 24,
             right: 24,
             child: ElevatedButton(
-              onPressed: _isAligned ? _captureAndNavigate : null,
+              onPressed: (_isAligned && !_isProcessing) ? _captureAndNavigate : null,
               style: ElevatedButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 backgroundColor: Theme.of(context).colorScheme.primary,
                 disabledBackgroundColor: Colors.grey.shade800,
               ),
-              child: Text(
-                'Capture & Scan', 
-                style: textTheme.titleMedium?.copyWith(
-                  color: _isAligned ? const Color(0xFF141414) : Colors.grey.shade500, 
-                  fontWeight: FontWeight.bold
-                )
-              ),
+              child: _isProcessing 
+                ? const SizedBox(
+                    height: 20, 
+                    width: 20, 
+                    child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)
+                  )
+                : Text(
+                    'Capture & Scan', 
+                    style: textTheme.titleMedium?.copyWith(
+                      color: _isAligned ? const Color(0xFF141414) : Colors.grey.shade500, 
+                      fontWeight: FontWeight.bold
+                    )
+                  ),
             ),
           ),
         ],
@@ -319,24 +336,44 @@ class _CameraViewState extends State<CameraView> {
   }
 }
 
-class _ScannerOverlayPainter extends CustomPainter {
+class FaceMeshPainter extends CustomPainter {
+  final FaceMesh? faceMesh;
+  final Size imageSize;
+  final bool isAligned;
+
+  FaceMeshPainter(this.faceMesh, this.imageSize, this.isAligned);
+
   @override
   void paint(Canvas canvas, Size size) {
+    if (faceMesh == null) return;
+
     final paint = Paint()
-      ..color = Colors.black54
-      ..style = PaintingStyle.fill;
+      ..style = PaintingStyle.fill
+      ..color = isAligned ? Colors.greenAccent.withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.5);
+
+    // Calculate scale between camera image and screen canvas
+    // Wait, the camera preview might be cropped (BoxFit.cover). 
+    // We assume the aspect ratio matches closely enough for a simple UI mesh.
+    // If it's a FittedBox with BoxFit.cover, we need to map correctly.
+    // The parent of this CustomPaint is Positioned.fill over the Stack.
+    // The camera is FittedBox(fit: BoxFit.cover, SizedBox(width: previewHeight, height: previewWidth))
+    // We'll calculate simple X and Y scale based on the screen size.
+    final double scaleX = size.width / imageSize.width;
+    final double scaleY = size.height / imageSize.height;
+
+    // Draw the 468 mesh points
+    for (final point in faceMesh!.points) {
+      // The image from front camera might need flipping horizontally.
+      // We will flip X so it mirrors the preview.
+      final double x = size.width - (point.x * scaleX);
+      final double y = point.y * scaleY;
       
-    final path = Path()
-      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height))
-      ..addOval(Rect.fromCenter(
-          center: Offset(size.width / 2, size.height / 2), 
-          width: 250, 
-          height: 360))
-      ..fillType = PathFillType.evenOdd;
-      
-    canvas.drawPath(path, paint);
+      canvas.drawCircle(Offset(x, y), 1.5, paint);
+    }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant FaceMeshPainter oldDelegate) {
+    return oldDelegate.faceMesh != faceMesh || oldDelegate.isAligned != isAligned;
+  }
 }

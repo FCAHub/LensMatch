@@ -4,7 +4,18 @@ import 'package:camera/camera.dart';
 import 'dart:math';
 import 'dart:io';
 
-enum FrameStyle { none, classicRectangular, retroRound, aviators, catEye, wayfarer }
+enum FrameStyle {
+  none,
+  round,
+  catEye,
+  rectangle,
+  wayfarer,
+  square,
+  aviator,
+  geometric,
+  browline,
+  oval
+}
 
 class FramePainter extends CustomPainter {
   final List<Face> faces;
@@ -79,7 +90,7 @@ class FramePainter extends CustomPainter {
     double height = lensWidth * 0.7; // default aspect ratio
 
     switch (style) {
-      case FrameStyle.classicRectangular:
+      case FrameStyle.rectangle:
         paint.color = Colors.black87;
         height = lensWidth * 0.6;
         // Left lens
@@ -102,7 +113,30 @@ class FramePainter extends CustomPainter {
         canvas.drawLine(Offset(-bridgeWidth / 2, -height * 0.2), Offset(bridgeWidth / 2, -height * 0.2), paint);
         break;
 
-      case FrameStyle.retroRound:
+      case FrameStyle.square:
+        paint.color = Colors.black87;
+        height = lensWidth * 0.9;
+        // Left lens
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset(-lensWidth / 2 - bridgeWidth / 2, 0), width: lensWidth, height: height),
+            const Radius.circular(6),
+          ),
+          paint,
+        );
+        // Right lens
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromCenter(center: Offset(lensWidth / 2 + bridgeWidth / 2, 0), width: lensWidth, height: height),
+            const Radius.circular(6),
+          ),
+          paint,
+        );
+        // Bridge
+        canvas.drawLine(Offset(-bridgeWidth / 2, -height * 0.1), Offset(bridgeWidth / 2, -height * 0.1), paint);
+        break;
+
+      case FrameStyle.round:
         paint.color = Colors.amber.shade700;
         paint.strokeWidth = 4.0;
         height = lensWidth; // Circle
@@ -114,7 +148,23 @@ class FramePainter extends CustomPainter {
         canvas.drawLine(Offset(-bridgeWidth / 2, 0), Offset(bridgeWidth / 2, 0), paint);
         break;
 
-      case FrameStyle.aviators:
+      case FrameStyle.oval:
+        paint.color = Colors.blue.shade900;
+        paint.strokeWidth = 4.0;
+        height = lensWidth * 0.6; 
+        // Left lens
+        canvas.drawOval(
+            Rect.fromCenter(center: Offset(-lensWidth / 2 - bridgeWidth / 2, 0), width: lensWidth, height: height),
+            paint);
+        // Right lens
+        canvas.drawOval(
+            Rect.fromCenter(center: Offset(lensWidth / 2 + bridgeWidth / 2, 0), width: lensWidth, height: height),
+            paint);
+        // Bridge
+        canvas.drawLine(Offset(-bridgeWidth / 2, 0), Offset(bridgeWidth / 2, 0), paint);
+        break;
+
+      case FrameStyle.aviator:
         paint.color = Colors.blueGrey;
         paint.strokeWidth = 3.0;
         height = lensWidth * 0.85;
@@ -185,6 +235,77 @@ class FramePainter extends CustomPainter {
         // Bridge
         canvas.drawLine(Offset(-bridgeWidth / 2, -height * 0.2), Offset(bridgeWidth / 2, -height * 0.2), paint);
         break;
+
+      case FrameStyle.geometric:
+        paint.color = Colors.teal.shade700;
+        paint.strokeWidth = 4.0;
+        height = lensWidth * 0.8;
+        
+        // Helper function for hexagon
+        Path buildHexagon(double cx, double cy) {
+           double hw = lensWidth / 2;
+           double hh = height / 2;
+           return Path()
+             ..moveTo(cx - hw * 0.5, cy - hh)
+             ..lineTo(cx + hw * 0.5, cy - hh)
+             ..lineTo(cx + hw, cy)
+             ..lineTo(cx + hw * 0.5, cy + hh)
+             ..lineTo(cx - hw * 0.5, cy + hh)
+             ..lineTo(cx - hw, cy)
+             ..close();
+        }
+        
+        // Left lens
+        canvas.drawPath(buildHexagon(-lensWidth / 2 - bridgeWidth / 2, 0), paint);
+        // Right lens
+        canvas.drawPath(buildHexagon(lensWidth / 2 + bridgeWidth / 2, 0), paint);
+        // Bridge
+        canvas.drawLine(Offset(-bridgeWidth / 2, -height * 0.2), Offset(bridgeWidth / 2, -height * 0.2), paint);
+        break;
+
+      case FrameStyle.browline:
+        height = lensWidth * 0.7;
+        
+        // Draw bottom wireframe (thin, metallic)
+        final wirePaint = Paint()
+          ..color = Colors.grey.shade400
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0;
+
+        // Left bottom
+        canvas.drawArc(
+          Rect.fromCenter(center: Offset(-lensWidth / 2 - bridgeWidth / 2, 0), width: lensWidth, height: height),
+          0, 3.14159, false, wirePaint,
+        );
+        // Right bottom
+        canvas.drawArc(
+          Rect.fromCenter(center: Offset(lensWidth / 2 + bridgeWidth / 2, 0), width: lensWidth, height: height),
+          0, 3.14159, false, wirePaint,
+        );
+        
+        // Bridge (metallic)
+        canvas.drawLine(Offset(-bridgeWidth / 2, -height * 0.2), Offset(bridgeWidth / 2, -height * 0.2), wirePaint);
+
+        // Draw top browline (thick, dark)
+        final browPaint = Paint()
+          ..color = Colors.black
+          ..style = PaintingStyle.stroke
+          ..strokeCap = StrokeCap.round
+          ..strokeWidth = 9.0;
+
+        // Left brow
+        Path leftBrow = Path()
+           ..moveTo(-bridgeWidth / 2, -height * 0.2)
+           ..quadraticBezierTo(-lensWidth / 2 - bridgeWidth / 2, -height * 0.6, -lensWidth - bridgeWidth / 2, -height * 0.1);
+        canvas.drawPath(leftBrow, browPaint);
+        
+        // Right brow
+        Path rightBrow = Path()
+           ..moveTo(bridgeWidth / 2, -height * 0.2)
+           ..quadraticBezierTo(lensWidth / 2 + bridgeWidth / 2, -height * 0.6, lensWidth + bridgeWidth / 2, -height * 0.1);
+        canvas.drawPath(rightBrow, browPaint);
+        break;
+        
       default:
         break;
     }

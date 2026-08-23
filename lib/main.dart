@@ -3,13 +3,17 @@ import 'package:google_fonts/google_fonts.dart';
 import 'views/login_view.dart';
 import 'package:flutter/foundation.dart';
 import 'package:device_preview/device_preview.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 import 'package:camera/camera.dart';
 
+import 'package:firebase_core/firebase_core.dart';
 List<CameraDescription> cameras = [];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(); // Initializes Firebase for the current platform
+  await dotenv.load(fileName: ".env");
   
   try {
     cameras = await availableCameras();

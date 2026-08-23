@@ -9,7 +9,9 @@ import '../main.dart'; // Access global 'cameras' list
 import 'frame_painter.dart';
 
 class ARTryonView extends StatefulWidget {
-  const ARTryonView({super.key});
+  final String? faceShape;
+  final List<String>? aiRecommendedFrames;
+  const ARTryonView({super.key, this.faceShape, this.aiRecommendedFrames});
 
   @override
   State<ARTryonView> createState() => _ARTryonViewState();
@@ -36,25 +38,59 @@ class _ARTryonViewState extends State<ARTryonView> {
   FrameStyle _selectedFrame = FrameStyle.none;
   int _selectedTabIndex = 0; // 0 for Recommended, 1 for All Frames
 
-  final List<FrameStyle> _recommendedFrames = [
-    FrameStyle.none,
-    FrameStyle.classicRectangular,
-    FrameStyle.aviators,
-  ];
-
+  late final List<FrameStyle> _recommendedFrames;
   final List<FrameStyle> _allFrames = [
     FrameStyle.none,
-    FrameStyle.classicRectangular,
-    FrameStyle.retroRound,
-    FrameStyle.aviators,
+    FrameStyle.round,
     FrameStyle.catEye,
+    FrameStyle.rectangle,
     FrameStyle.wayfarer,
+    FrameStyle.square,
+    FrameStyle.aviator,
+    FrameStyle.geometric,
+    FrameStyle.browline,
+    FrameStyle.oval,
   ];
 
   @override
   void initState() {
     super.initState();
+    if (widget.aiRecommendedFrames != null && widget.aiRecommendedFrames!.isNotEmpty) {
+      _recommendedFrames = [FrameStyle.none, ..._mapStringsToFrameStyles(widget.aiRecommendedFrames!)];
+    } else {
+      _recommendedFrames = _getRecommendedFramesForShape(widget.faceShape);
+    }
     _initializeCamera();
+  }
+
+  List<FrameStyle> _mapStringsToFrameStyles(List<String> strings) {
+    return strings.map((s) {
+      switch (s) {
+        case 'Rectangle': return FrameStyle.rectangle;
+        case 'Round': return FrameStyle.round;
+        case 'Aviator': return FrameStyle.aviator;
+        case 'Cat Eye': return FrameStyle.catEye;
+        case 'Wayfarer': return FrameStyle.wayfarer;
+        case 'Square': return FrameStyle.square;
+        case 'Geometric': return FrameStyle.geometric;
+        case 'Browline': return FrameStyle.browline;
+        case 'Oval': return FrameStyle.oval;
+        default: return FrameStyle.none;
+      }
+    }).where((f) => f != FrameStyle.none).toList();
+  }
+
+  List<FrameStyle> _getRecommendedFramesForShape(String? shape) {
+    switch (shape) {
+      case 'Round': return [FrameStyle.none, FrameStyle.rectangle, FrameStyle.square, FrameStyle.geometric];
+      case 'Square': return [FrameStyle.none, FrameStyle.round, FrameStyle.catEye, FrameStyle.wayfarer, FrameStyle.aviator, FrameStyle.browline, FrameStyle.oval];
+      case 'Heart': return [FrameStyle.none, FrameStyle.catEye, FrameStyle.rectangle, FrameStyle.wayfarer, FrameStyle.browline, FrameStyle.oval];
+      case 'Oblong': return [FrameStyle.none, FrameStyle.wayfarer, FrameStyle.geometric, FrameStyle.browline];
+      case 'Diamond': return [FrameStyle.none, FrameStyle.oval, FrameStyle.catEye, FrameStyle.round];
+      case 'Triangle': return [FrameStyle.none, FrameStyle.round, FrameStyle.catEye, FrameStyle.wayfarer, FrameStyle.square, FrameStyle.aviator, FrameStyle.geometric];
+      case 'Oval':
+      default: return [FrameStyle.none, FrameStyle.round, FrameStyle.catEye, FrameStyle.rectangle, FrameStyle.wayfarer, FrameStyle.square, FrameStyle.aviator, FrameStyle.geometric, FrameStyle.browline, FrameStyle.oval];
+    }
   }
 
   Future<void> _initializeCamera() async {
@@ -138,11 +174,15 @@ class _ARTryonViewState extends State<ARTryonView> {
   String _getFrameName(FrameStyle style) {
     switch (style) {
       case FrameStyle.none: return 'None';
-      case FrameStyle.classicRectangular: return 'Rectangular';
-      case FrameStyle.retroRound: return 'Round';
-      case FrameStyle.aviators: return 'Aviator';
+      case FrameStyle.rectangle: return 'Rectangle';
+      case FrameStyle.round: return 'Round';
+      case FrameStyle.aviator: return 'Aviator';
       case FrameStyle.catEye: return 'Cat Eye';
       case FrameStyle.wayfarer: return 'Wayfarer';
+      case FrameStyle.square: return 'Square';
+      case FrameStyle.geometric: return 'Geometric';
+      case FrameStyle.browline: return 'Browline';
+      case FrameStyle.oval: return 'Oval';
     }
   }
 

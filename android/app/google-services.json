@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "2770988839",
+    "project_id": "lensmatch-a2dbc",
+    "storage_bucket": "lensmatch-a2dbc.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:2770988839:android:6eae6445a0c8e487160302",
+        "android_client_info": {
+          "package_name": "com.franselle.lensmatch.lensmatch"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCKUSLeHFGaMISG6LpXhG8FAdc42okxxnA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

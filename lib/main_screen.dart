@@ -7,7 +7,7 @@ import 'views/camera_view.dart';
 import 'views/result_view.dart';
 import 'views/frame_view.dart';
 import 'views/profile_view.dart';
-import 'utils/face_shape_detector.dart';
+import 'utils/tflite_face_detector.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -37,7 +37,7 @@ class _MainScreenState extends State<MainScreen> {
       MaterialPageRoute(builder: (context) => const CameraView()),
     );
     
-    if (result != null && result is Map<String, dynamic>) {
+    if (result != null && result is Map) {
       setState(() {
         _lastImagePath = result['imagePath'];
         _lastShapeResult = result['shapeResult'];

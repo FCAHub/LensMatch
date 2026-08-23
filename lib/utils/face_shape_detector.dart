@@ -1,5 +1,6 @@
 import 'package:google_mlkit_face_mesh_detection/google_mlkit_face_mesh_detection.dart';
 import 'dart:math';
+import 'dart:collection';
 
 class FaceShapeResult {
   final String shape;
@@ -8,66 +9,132 @@ class FaceShapeResult {
   FaceShapeResult(this.shape, this.confidence);
 }
 
+class _FaceMeasurements {
+  final double faceLength;
+  final double faceWidth;
+  final double jawWidth;
+  final double foreheadWidth;
+
+  _FaceMeasurements(
+    this.faceLength,
+    this.faceWidth,
+    this.jawWidth,
+    this.foreheadWidth,
+  );
+}
+
 class FaceShapeDetector {
-  static FaceShapeResult detectShape(FaceMesh face) {
-    if (face.points.length < 468) {
-      return FaceShapeResult('Unknown', 0.0);
-    }
+  static const int _maxHistory = 15;
+  final Queue<_FaceMeasurements> _history = Queue<_FaceMeasurements>();
+
+  void addFrame(FaceMesh face) {
+    if (face.points.length < 468) return;
 
     final points = face.points;
-    
-    FaceMeshPoint getPoint(int index) {
-      return points.firstWhere((p) => p.index == index, orElse: () => points.first);
+
+    FaceMeshPoint? getPoint(int index) {
+      for (final p in points) {
+        if (p.index == index) return p;
+      }
+      return null;
     }
 
-    double distance(FaceMeshPoint p1, FaceMeshPoint p2) {
+    double distance3D(FaceMeshPoint? p1, FaceMeshPoint? p2) {
+      if (p1 == null || p2 == null) return 0.0;
       return sqrt(pow(p1.x - p2.x, 2) + pow(p1.y - p2.y, 2) + pow(p1.z - p2.z, 2));
     }
 
-    // MediaPipe Face Mesh Key Points (Anatomically accurate landmarks)
-    // Top of forehead: 10, Bottom of chin: 152
-    double faceLength = distance(getPoint(152), getPoint(10));
+    // Top of forehead (10), bottom of chin (152)
+    double faceLength = distance3D(getPoint(152), getPoint(10));
 
-    // Left cheek edge: 234, Right cheek edge: 454 (widest part of face)
-    double faceWidth = distance(getPoint(454), getPoint(234));
+    // Cheekbones — widest part of the face (454, 234)
+    double faceWidth = distance3D(getPoint(454), getPoint(234));
 
-    // Jaw edge left: 177, Jaw edge right: 401 (mid-lower jawline)
-    double jawWidth = distance(getPoint(401), getPoint(177));
-    
-    // Forehead temple left: 70, Forehead temple right: 300 (outer brow/temples)
-    double foreheadWidth = distance(getPoint(300), getPoint(70));
+    // Jawline width - averaging a couple of points to get the curve
+    double jawWidth1 = distance3D(getPoint(361), getPoint(132));
+    double jawWidth2 = distance3D(getPoint(365), getPoint(136));
+    double jawWidth = (jawWidth1 + jawWidth2) / 2.0;
 
-    double lengthToWidth = faceWidth > 0 ? faceLength / faceWidth : 1.0;
-    double jawToForehead = foreheadWidth > 0 ? jawWidth / foreheadWidth : 1.0;
-    
+    // Forehead/temple width
+    double foreheadWidth = distance3D(getPoint(356), getPoint(127));
+
+    if (faceLength > 0 && faceWidth > 0 && jawWidth > 0 && foreheadWidth > 0) {
+      _history.add(_FaceMeasurements(faceLength, faceWidth, jawWidth, foreheadWidth));
+      if (_history.length > _maxHistory) {
+        _history.removeFirst();
+      }
+    }
+  }
+
+  FaceShapeResult getSmoothedResult() {
+    if (_history.isEmpty) {
+      return FaceShapeResult('Unknown', 0.0);
+    }
+
+    double avgLength = 0, avgWidth = 0, avgJaw = 0, avgForehead = 0;
+    for (final m in _history) {
+      avgLength += m.faceLength;
+      avgWidth += m.faceWidth;
+      avgJaw += m.jawWidth;
+      avgForehead += m.foreheadWidth;
+    }
+
+    int count = _history.length;
+    avgLength /= count;
+    avgWidth /= count;
+    avgJaw /= count;
+    avgForehead /= count;
+
+    double lengthToWidth = avgLength / avgWidth;
+    double jawToFace = avgJaw / avgWidth;
+    double foreheadToJaw = avgForehead / avgJaw;
+    double foreheadToFace = avgForehead / avgWidth;
+
     String predictedShape = 'Oval';
     double confidence = 0.85;
 
-    // Refined heuristic rules for face shape determination
-    // Typical length/width ratio is ~1.3. >1.35 is long, <1.25 is short.
-    if (lengthToWidth > 1.35) {
-      // Long faces: Oval or Rectangle
-      if (jawWidth > foreheadWidth * 0.95) {
+    // We calculate a continuous confidence score based on how close the ratios
+    // are to the expected ranges, clamped between 0.70 and 0.99.
+    double baseConfidence = 0.80 + (min(count / _maxHistory, 1.0) * 0.15);
+
+    if (lengthToWidth > 1.4) {
+      // Longer face
+      if (jawToFace > 0.80 && foreheadToFace > 0.80) {
         predictedShape = 'Rectangle';
-        confidence = 0.90;
+        confidence = baseConfidence + 0.04;
+      } else if (foreheadToFace < 0.75 && jawToFace < 0.75) {
+         // Cheekbones are the widest part on a long face
+         predictedShape = 'Oblong';
+         confidence = baseConfidence + 0.03;
+      } else if (foreheadToJaw > 1.20 && jawToFace < 0.82) {
+        predictedShape = 'Heart';
+        confidence = baseConfidence + 0.02;
       } else {
         predictedShape = 'Oval';
-        confidence = 0.95;
+        confidence = baseConfidence + 0.02;
       }
     } else {
-      // Shorter/Wider faces: Square, Round, or Heart
-      // If jaw is almost as wide as the cheek width, it's square
-      if (jawWidth > faceWidth * 0.85) {
-        predictedShape = 'Square';
-        confidence = 0.88;
-      } else if (jawToForehead < 0.80) { // Narrow jaw compared to forehead
+      // Shorter / wider face
+      if (jawToFace < 0.75 && foreheadToFace < 0.75) {
+        predictedShape = 'Diamond';
+        confidence = baseConfidence + 0.04;
+      } else if (jawToFace > 0.90 && foreheadToJaw < 0.95) {
+        predictedShape = 'Triangle';
+        confidence = baseConfidence + 0.03;
+      } else if (foreheadToJaw > 1.20 && jawToFace < 0.82) {
         predictedShape = 'Heart';
-        confidence = 0.91;
+        confidence = baseConfidence + 0.04;
+      } else if (jawToFace > 0.85 && foreheadToJaw < 1.05 && foreheadToJaw > 0.95) {
+        predictedShape = 'Square';
+        confidence = baseConfidence + 0.03;
       } else {
         predictedShape = 'Round';
-        confidence = 0.89;
+        confidence = baseConfidence + 0.02;
       }
     }
+
+    // Clamp confidence
+    confidence = min(max(confidence, 0.0), 0.99);
 
     return FaceShapeResult(predictedShape, confidence);
   }
