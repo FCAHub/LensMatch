@@ -14,7 +14,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(); // Initializes Firebase for the current platform
   await dotenv.load(fileName: ".env");
-  
+
   try {
     cameras = await availableCameras();
   } catch (e) {
